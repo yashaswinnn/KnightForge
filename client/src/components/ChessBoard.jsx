@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils.js';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -94,7 +95,7 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
   const cleanupTimersRef = useRef([]);
   const didInitRef = useRef(false);
 
-  const boardMap = fenToBoardMap(fen || STARTING_FEN);
+  const boardMap = useMemo(() => fenToBoardMap(fen || STARTING_FEN), [fen]);
 
   useEffect(() => {
     return () => {
