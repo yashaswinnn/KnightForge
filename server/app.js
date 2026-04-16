@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
+
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
@@ -34,11 +34,5 @@ app.use((err, req, res, next) => {
   res.status(err.status || err.statusCode || 500).json({ message: err.message || 'Internal server error' });
 });
 
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-  });
-}
 
 module.exports = app;
