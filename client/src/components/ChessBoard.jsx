@@ -4,19 +4,19 @@ import { cn } from '../lib/utils.js';
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 const STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-const PIECE_GLYPHS = {
-  wK: '\u2654',
-  wQ: '\u2655',
-  wR: '\u2656',
-  wB: '\u2657',
-  wN: '\u2658',
-  wP: '\u2659',
-  bK: '\u265A',
-  bQ: '\u265B',
-  bR: '\u265C',
-  bB: '\u265D',
-  bN: '\u265E',
-  bP: '\u265F',
+const PIECE_IMAGES = {
+  wK: 'https://www.chess.com/chess-themes/pieces/neo/150/wk.png',
+  wQ: 'https://www.chess.com/chess-themes/pieces/neo/150/wq.png',
+  wR: 'https://www.chess.com/chess-themes/pieces/neo/150/wr.png',
+  wB: 'https://www.chess.com/chess-themes/pieces/neo/150/wb.png',
+  wN: 'https://www.chess.com/chess-themes/pieces/neo/150/wn.png',
+  wP: 'https://www.chess.com/chess-themes/pieces/neo/150/wp.png',
+  bK: 'https://www.chess.com/chess-themes/pieces/neo/150/bk.png',
+  bQ: 'https://www.chess.com/chess-themes/pieces/neo/150/bq.png',
+  bR: 'https://www.chess.com/chess-themes/pieces/neo/150/br.png',
+  bB: 'https://www.chess.com/chess-themes/pieces/neo/150/bb.png',
+  bN: 'https://www.chess.com/chess-themes/pieces/neo/150/bn.png',
+  bP: 'https://www.chess.com/chess-themes/pieces/neo/150/bp.png',
 };
 
 function fenToBoardMap(fen) {
@@ -320,13 +320,20 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
             className={cn('chess-piece-sprite', sprite.exiting && 'is-captured')}
             style={{
               transform: `translate(${sprite.x * 100}%, ${sprite.y * 100}%)`,
-              color: sprite.piece[0] === 'w' ? '#ffffff' : '#0a0a0a',
-              textShadow: sprite.piece[0] === 'w'
-                ? '-1.5px -1.5px 0 #1a1a1a, 1.5px -1.5px 0 #1a1a1a, -1.5px 1.5px 0 #1a1a1a, 1.5px 1.5px 0 #1a1a1a, 0 2px 8px rgba(0,0,0,1)'
-                : '-1.5px -1.5px 0 rgba(255,255,255,0.15), 1.5px -1.5px 0 rgba(255,255,255,0.15), -1.5px 1.5px 0 rgba(255,255,255,0.15), 1.5px 1.5px 0 rgba(255,255,255,0.15), 0 1px 4px rgba(0,0,0,0.8)',
             }}
           >
-            <span className="chess-piece-glyph">{PIECE_GLYPHS[sprite.piece]}</span>
+            <img
+              src={PIECE_IMAGES[sprite.piece]}
+              alt={sprite.piece}
+              draggable={false}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            />
           </div>
         ))}
       </div>
@@ -382,13 +389,12 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
                     borderRadius: 12,
                     border: '1px solid hsl(var(--border))',
                     background: 'hsl(var(--background))',
-                    color: option.piece[0] === 'w' ? '#ffffff' : '#1a1a1a',
-                    fontSize: 42,
                     cursor: 'pointer',
-                    transition: 'transform 0.15s ease, border-color 0.15s ease, background 0.15s ease',
-                    textShadow: option.piece[0] === 'w'
-                      ? '-1.5px -1.5px 0 #2a2a2a, 1.5px -1.5px 0 #2a2a2a, -1.5px 1.5px 0 #2a2a2a, 1.5px 1.5px 0 #2a2a2a, 0 2px 6px rgba(0,0,0,0.9)'
-                      : '-1px -1px 0 rgba(255,255,255,0.25), 1px -1px 0 rgba(255,255,255,0.25), -1px 1px 0 rgba(255,255,255,0.25), 1px 1px 0 rgba(255,255,255,0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 8,
+                    transition: 'transform 0.15s ease, border-color 0.15s ease',
                   }}
                   onMouseEnter={(event) => {
                     event.currentTarget.style.borderColor = 'hsl(var(--primary))';
@@ -399,7 +405,12 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
                     event.currentTarget.style.transform = 'translateY(0)';
                   }}
                 >
-                  {PIECE_GLYPHS[option.piece]}
+                  <img
+                    src={PIECE_IMAGES[option.piece]}
+                    alt={option.piece}
+                    draggable={false}
+                    style={{ width: 48, height: 48, objectFit: 'contain', pointerEvents: 'none' }}
+                  />
                 </button>
               ))}
             </div>
