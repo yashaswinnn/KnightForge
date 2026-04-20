@@ -10,18 +10,29 @@ function PresenceDot({ online }) {
 
 export default function Leaderboard() {
   const [tab, setTab] = useState('Global');
+  const scope = tab.toLowerCase();
   const { data: stats } = useQuery({ queryKey: ['lb-stats'], queryFn: getLeaderboardStats });
-  const { data: lb, isLoading } = useQuery({ queryKey: ['leaderboard'], queryFn: () => getLeaderboard({ limit: 50 }), refetchInterval: 5000 });
+  const { data: lb, isLoading } = useQuery({
+    queryKey: ['leaderboard', scope],
+    queryFn: () => getLeaderboard({ limit: 50, scope }),
+    refetchInterval: 5000,
+  });
 
   const entries = lb?.entries || [];
   const top3 = entries.slice(0, 3);
+  const ratingLabel = tab === 'Weekly' ? 'Weekly Score' : 'Rating';
+  const subtitle = tab === 'Global'
+    ? 'Compete with the best players worldwide'
+    : tab === 'Friends'
+      ? 'See how you rank against your friends'
+      : 'Weekly shows points earned in the last 7 days';
 
   return (
     <div className="cf-lb-outer" style={{ minHeight: '100vh', padding: '32px 36px', position: 'relative', background: 'radial-gradient(ellipse 65% 50% at 25% 20%, rgba(35,15,110,0.5) 0%, transparent 60%), linear-gradient(180deg,#070a12 0%,#0d1018 100%)' }}>
 
       <div style={{ animation: 'fadeUp 0.5s ease both' }}>
         <h1 className="font-serif" style={{ fontSize: 'clamp(1.6rem,3.5vw,2.8rem)', fontWeight: 700 }}>Leaderboard</h1>
-        <p style={{ fontSize: '0.76rem', color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>Compete with the best players worldwide</p>
+        <p style={{ fontSize: '0.76rem', color: 'hsl(var(--muted-foreground))', marginTop: 4 }}>{subtitle}</p>
         <div style={{ display: 'flex', gap: 4, marginTop: 14, background: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 3, width: 'fit-content' }}>
           {['Global', 'Friends', 'Weekly'].map(t => (
             <button key={t} onClick={() => setTab(t)} style={{ padding: '5px 16px', borderRadius: 6, border: 'none', fontSize: '0.76rem', fontWeight: 500, cursor: 'pointer', background: tab === t ? 'hsl(var(--primary))' : 'transparent', color: tab === t ? 'hsl(var(--primary-foreground))' : 'hsl(var(--muted-foreground))', transition: 'all 0.15s', fontFamily: 'inherit' }}>
@@ -62,7 +73,7 @@ export default function Leaderboard() {
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
                 <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>#</th>
                 <th style={{ padding: '10px 14px', textAlign: 'left', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>Player</th>
-                <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>Rating</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>{ratingLabel}</th>
                 <th className="cf-lb-col-hide" style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>Games</th>
                 <th className="cf-lb-col-hide" style={{ padding: '10px 14px', textAlign: 'right', fontSize: '0.71rem', fontWeight: 500, color: 'hsl(var(--muted-foreground))', whiteSpace: 'nowrap' }}>Win %</th>
               </tr>
@@ -70,6 +81,10 @@ export default function Leaderboard() {
             <tbody>
               {isLoading ? (
                 <tr><td colSpan="5" style={{ textAlign: 'center', padding: '24px', color: 'hsl(var(--muted-foreground))', fontSize: '0.8rem' }}>Loading...</td></tr>
+              ) : entries.length === 0 ? (
+                <tr><td colSpan="5" style={{ textAlign: 'center', padding: '24px', color: 'hsl(var(--muted-foreground))', fontSize: '0.8rem' }}>
+                  {tab === 'Friends' ? 'Add friends to see your friends leaderboard.' : 'No leaderboard data available yet.'}
+                </td></tr>
               ) : (
                 entries.map((entry, i) => (
                   <tr key={entry.user.id} className={`cf-lb-row${entry.user.id === 'me' ? ' me' : ''}`} style={{ animationDelay: `${i * 0.05 + 0.15}s` }}>
