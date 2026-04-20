@@ -395,8 +395,71 @@
 .chess-square.legal-move::after { content:''; position:absolute; width:30%; height:30%; border-radius:50%; background:rgba(0,0,0,0.22); pointer-events:none; }
 .chess-square.legal-capture::after { content:''; position:absolute; inset:0; border-radius:50%; box-shadow:inset 0 0 0 5px rgba(0,0,0,0.22); pointer-events:none; }
 .chess-piece-layer { position:absolute; inset:0; pointer-events:none; }
-.chess-piece-sprite { position:absolute; width:12.5%; height:12.5%; display:flex; align-items:center; justify-content:center; will-change:transform,opacity; transition:transform 220ms cubic-bezier(0.22,1,0.36,1),opacity 220ms ease; backface-visibility: hidden; -webkit-backface-visibility: hidden; transform-style: preserve-3d; }
-.chess-piece-sprite.is-captured { opacity:0; filter:blur(1px); }
+/* ── piece sprites ── */
+.chess-piece-sprite {
+  position:absolute; width:12.5%; height:12.5%;
+  display:flex; align-items:center; justify-content:center;
+  will-change:transform; transition:transform 200ms cubic-bezier(0.25,0.46,0.45,0.94);
+  backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  transform-origin: center center;
+}
+.chess-piece-sprite .piece-img {
+  width:88%; height:88%; object-fit:contain;
+  pointer-events:none; user-select:none; display:block;
+  transition: filter 150ms ease, transform 150ms ease;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));
+}
+
+/* lift while sliding — piece rises off the board during transit */
+.chess-piece-sprite.is-moving .piece-img {
+  transform: scale(1.12);
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.55));
+  z-index: 10;
+}
+
+/* land bounce — satisfying elastic settle on arrival */
+.chess-piece-sprite.just-landed .piece-img {
+  animation: pieceLand 380ms cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
+/* capture exit — spin-shrink off screen */
+.chess-piece-sprite.is-captured {
+  transition: transform 280ms cubic-bezier(0.55,0,1,0.45), opacity 280ms ease;
+  opacity: 0;
+}
+.chess-piece-sprite.is-captured .piece-img {
+  animation: captureExit 280ms cubic-bezier(0.55,0,1,0.45) both;
+}
+
+/* drag-picked-up */
+.chess-piece-sprite.is-dragging .piece-img {
+  transform: scale(1.22);
+  filter: drop-shadow(0 12px 24px rgba(0,0,0,0.65));
+  cursor: grabbing;
+}
+
+@keyframes pieceLand {
+  0%   { transform: scale(1.14) translateY(-6%); }
+  45%  { transform: scale(0.91) translateY(2%); }
+  70%  { transform: scale(1.05) translateY(-1%); }
+  88%  { transform: scale(0.97); }
+  100% { transform: scale(1) translateY(0); }
+}
+
+@keyframes captureExit {
+  0%   { transform: scale(1) rotate(0deg); opacity: 1; }
+  60%  { transform: scale(0.55) rotate(18deg); opacity: 0.4; }
+  100% { transform: scale(0.1) rotate(30deg); opacity: 0; }
+}
+
+/* square flash when a piece lands */
+.chess-square.piece-landed-flash {
+  animation: squareFlash 420ms ease-out both;
+}
+@keyframes squareFlash {
+  0%   { filter: brightness(1.6); }
+  100% { filter: brightness(1); }
+}
 .chess-piece-glyph { font-size:6.5vmin; line-height:1; user-select:none; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: geometricPrecision; }
 .coord-label { position:absolute; font-size:10px; font-weight:600; pointer-events:none; line-height:1; }
 

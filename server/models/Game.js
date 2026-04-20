@@ -14,6 +14,7 @@ const gameSchema = new mongoose.Schema({
   termination: { type: String, default: null },
   isAiGame: { type: Boolean, default: false },
   aiDifficulty: { type: String, enum: ['easy', 'medium', 'hard', null], default: null },
+  lastMoveAt: { type: Date, default: null },
 }, { timestamps: true });
 
 gameSchema.methods.toPublic = function () {

@@ -90,6 +90,9 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
   const [selected, setSelected] = useState(null);
   const [sprites, setSprites] = useState([]);
   const [pendingPromotion, setPendingPromotion] = useState(null);
+  const [movingId, setMovingId]       = useState(null);
+  const [landedId, setLandedId]       = useState(null);
+  const [flashSquare, setFlashSquare] = useState(null);
   const spriteIdRef = useRef(1);
   const cleanupTimersRef = useRef([]);
   const didInitRef = useRef(false);
@@ -141,6 +144,29 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
         if (movedSprite && !usedIds.has(movedSprite.id) && !assignedSquares.has(moveTo)) {
           usedIds.add(movedSprite.id);
           assignedSquares.add(moveTo);
+
+          // Animation sequence:
+          // 1. Immediately mark as "moving" → piece lifts + slides
+          // 2. After slide duration → switch to "landed" → elastic bounce
+          // 3. Flash the destination square
+          // 4. Clear all after animation completes
+          const id = movedSprite.id;
+          const dest = moveTo;
+          window.setTimeout(() => {
+            setMovingId(id);
+            setFlashSquare(null);
+            const slideMs = 200;
+            window.setTimeout(() => {
+              setMovingId(null);
+              setLandedId(id);
+              setFlashSquare(dest);
+              window.setTimeout(() => {
+                setLandedId(null);
+                setFlashSquare(null);
+              }, 420);
+            }, slideMs);
+          }, 0);
+
           nextSprites.push({
             ...movedSprite,
             square: moveTo,
@@ -281,6 +307,7 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
             isCheck && 'in-check',
             isCapture && !isSelected && 'legal-capture',
             isLegalMove && !isCapture && !isSelected && 'legal-move',
+            flashSquare === square && 'piece-landed-flash',
             pendingPromotion && 'pointer-events-none'
           )}
           onClick={() => handleSquare(square, piece)}
@@ -317,22 +344,22 @@ export function ChessBoard({ fen, flipped = false, legalMoves = [], onMove, last
         {sprites.map((sprite) => (
           <div
             key={sprite.id}
-            className={cn('chess-piece-sprite', sprite.exiting && 'is-captured')}
+            className={cn(
+              'chess-piece-sprite',
+              sprite.exiting          && 'is-captured',
+              sprite.id === movingId  && 'is-moving',
+              sprite.id === landedId  && 'just-landed',
+            )}
             style={{
               transform: `translate(${sprite.x * 100}%, ${sprite.y * 100}%)`,
+              zIndex: sprite.id === movingId ? 10 : 1,
             }}
           >
             <img
               src={PIECE_IMAGES[sprite.piece]}
               alt={sprite.piece}
               draggable={false}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                userSelect: 'none',
-              }}
+              className="piece-img"
             />
           </div>
         ))}

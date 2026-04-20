@@ -220,14 +220,103 @@ function initGameSocket(httpServer) {
         const game = await Game.findById(gameId);
         if (!game || game.status !== 'active') return;
 
+        const now = Date.now();
+        const moveCount = (game.moveCount || 0) + 1;
+
+        // Determine whose clock was running (the player who just moved)
+        // chess.js turn in the NEW fen is the NEXT player, so the one who just
+        // moved is the opposite of the current turn in the new position.
+        // We detect it from the move count: even moveCount = black just moved,
+        // odd moveCount = white just moved (move 1 = white's first move).
+        const whiteJustMoved = moveCount % 2 === 1;
+
+        // Deduct elapsed time from the player who just moved (clock started
+        // after White's first move, so only deduct from move 2 onwards).
+        let timeWhite = game.timeWhite;
+        let timeBlack = game.timeBlack;
+
+        if (game.lastMoveAt && moveCount > 1) {
+          const elapsedSec = Math.floor((now - game.lastMoveAt.getTime()) / 1000);
+          if (whiteJustMoved) {
+            timeWhite = Math.max(0, timeWhite - elapsedSec);
+          } else {
+            timeBlack = Math.max(0, timeBlack - elapsedSec);
+          }
+        }
+
         game.fen = fen;
         game.pgn = pgn || game.pgn;
-        game.moveCount = (game.moveCount || 0) + 1;
+        game.moveCount = moveCount;
+        game.timeWhite = timeWhite;
+        game.timeBlack = timeBlack;
+        game.lastMoveAt = new Date(now);
         await game.save();
 
-        socket.to(`game:${gameId}`).emit('game_update', { fen, move, pgn, moveCount: game.moveCount });
+        // Broadcast authoritative times to BOTH players so clocks stay in sync
+        io.to(`game:${gameId}`).emit('game_update', {
+          fen, move, pgn,
+          moveCount: game.moveCount,
+          timeWhite,
+          timeBlack,
+          serverTime: now,
+        });
+
+        // Server-side timeout check: if the player who just moved ran out of time
+        if (timeWhite === 0 || timeBlack === 0) {
+          const timedOutResult = timeWhite === 0 ? 'black' : 'white';
+          if (game.status !== 'completed') {
+            game.status = 'completed';
+            game.result = timedOutResult;
+            game.termination = 'timeout';
+            await game.save();
+            const ratingChanges = await finalizeRatedGame(game, timedOutResult);
+            io.to(`game:${gameId}`).emit('game_over', {
+              result: timedOutResult,
+              reason: 'timeout',
+              ratingChanges,
+            });
+          }
+        }
       } catch (err) {
         console.error('make_move error:', err);
+      }
+    });
+
+    // Client reports a timeout (as a safety net — server validates it)
+    socket.on('flag', async ({ gameId }) => {
+      try {
+        const game = await Game.findById(gameId);
+        if (!game || game.status === 'completed') return;
+
+        const now = Date.now();
+        const moveCount = game.moveCount || 0;
+        const whiteToMove = moveCount % 2 === 0; // whose turn it is now
+
+        let timeWhite = game.timeWhite;
+        let timeBlack = game.timeBlack;
+
+        if (game.lastMoveAt) {
+          const elapsedSec = Math.floor((now - game.lastMoveAt.getTime()) / 1000);
+          if (whiteToMove) timeWhite = Math.max(0, timeWhite - elapsedSec);
+          else timeBlack = Math.max(0, timeBlack - elapsedSec);
+        }
+
+        // Only accept the flag if the server also agrees time has run out
+        const flaggedColor = whiteToMove ? 'white' : 'black';
+        const flaggedTime = whiteToMove ? timeWhite : timeBlack;
+        if (flaggedTime > 2) return; // server says there's still time — reject
+
+        const result = flaggedColor === 'white' ? 'black' : 'white';
+        game.status = 'completed';
+        game.result = result;
+        game.termination = 'timeout';
+        game.timeWhite = timeWhite;
+        game.timeBlack = timeBlack;
+        await game.save();
+        const ratingChanges = await finalizeRatedGame(game, result);
+        io.to(`game:${gameId}`).emit('game_over', { result, reason: 'timeout', ratingChanges });
+      } catch (err) {
+        console.error('flag error:', err);
       }
     });
 
