@@ -92,8 +92,7 @@ function OfflineRedirect() {
 
     const syncOnLoad = async () => {
       if (location === '/offline') {
-        const isReachable = await checkConnectivity();
-        if (!cancelled && isReachable) {
+        if (!cancelled && navigator.onLine) {
           navigate('/');
         }
       } else {
@@ -104,12 +103,7 @@ function OfflineRedirect() {
     syncOnLoad();
 
     const goOnline = async () => {
-      if (location !== '/offline') {
-        return;
-      }
-
-      const isReachable = await checkConnectivity();
-      if (!cancelled && isReachable) {
+      if (!cancelled && location === '/offline') {
         navigate('/');
       }
     };
