@@ -7,6 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'chess_secret_dev';
 const TIME_MAP = { bullet: 60, blitz: 300, rapid: 600, classical: 1800 };
 const matchmakingQueue = [];
 const onlineUsers = new Map();
+let ioInstance = null;
 
 function markUserOnline(userId) {
   if (!userId) return;
@@ -41,6 +42,12 @@ function removeFromMatchmaking(socketId) {
     return true;
   }
   return false;
+}
+
+function emitToUser(userId, event, payload) {
+  if (!ioInstance || !userId) return;
+  const sockets = getSocketsByUserId(ioInstance, userId);
+  sockets.forEach((socket) => socket.emit(event, payload));
 }
 
 async function finalizeRatedGame(game, result) {
@@ -131,6 +138,7 @@ function initGameSocket(httpServer) {
     path: '/ws/socket.io',
     cors: { origin: true, credentials: true },
   });
+  ioInstance = io;
 
   io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -207,7 +215,7 @@ function initGameSocket(httpServer) {
         }
 
         const bothPlayersJoined = !!(game.whitePlayerId && game.blackPlayerId);
-        if (bothPlayersJoined) {
+        if (bothPlayersJoined && game.status !== 'active') {
           io.to(room).emit('opponent_joined', { gameId });
         }
       } catch (err) {
@@ -495,4 +503,4 @@ function initGameSocket(httpServer) {
   return io;
 }
 
-module.exports = { initGameSocket, isUserOnline };
+module.exports = { initGameSocket, isUserOnline, emitToUser };

@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { io } from 'socket.io-client';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth.js';
 import { cn } from '../lib/utils.js';
+import { acceptChallengeRequest, declineChallengeRequest, getMyFriends } from '../lib/api.js';
 import { Avatar } from './Avatar.jsx';
 import { NotificationBell } from './NotificationBell.jsx';
+import { Button } from './ui/button.jsx';
+import { toast } from '../hooks/use-toast.js';
 
 const NAV_LINKS = [
   { href: '/',            label: 'Home'     },
@@ -78,14 +82,71 @@ const BOTTOM_NAV = [
 export function Layout({ children }) {
   const { user, isAuthenticated, logout, token } = useAuth();
   const [location] = useLocation();
+  const [, navigate] = useLocation();
   const hideNavbar = location === '/offline';
+  const qc = useQueryClient();
+
+  const { data: friendsData } = useQuery({
+    queryKey: ['friends'],
+    queryFn: getMyFriends,
+    enabled: isAuthenticated,
+    refetchInterval: 5000,
+  });
+
+  const incomingChallenges = friendsData?.incomingChallenges || [];
+
+  const acceptChallenge = useMutation({
+    mutationFn: acceptChallengeRequest,
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({ title: 'Challenge accepted!', description: 'Opening your match now.' });
+      navigate(`/play/${res.gameId}`);
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
+
+  const declineChallenge = useMutation({
+    mutationFn: declineChallengeRequest,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({ title: 'Challenge declined' });
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
 
   useEffect(() => {
     if (!isAuthenticated || !token) return;
     const SOCKET_URL = import.meta.env.VITE_API_URL || '';
-const socket = io(SOCKET_URL, { path: '/ws/socket.io', auth: { token } });
+    const socket = io(SOCKET_URL, { path: '/ws/socket.io', auth: { token } });
+
+    socket.on('challenge_received', ({ challengerUsername, timeControl }) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({
+        title: 'New challenge received',
+        description: `${challengerUsername} challenged you to a ${timeControl} game.`,
+      });
+    });
+
+    socket.on('challenge_accepted', ({ gameId, acceptedByUsername }) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({
+        title: 'Challenge accepted!',
+        description: `${acceptedByUsername || 'Your opponent'} accepted the challenge.`,
+      });
+      navigate(`/play/${gameId}`);
+    });
+
+    socket.on('challenge_declined', ({ declinedByUsername }) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({
+        title: 'Challenge declined',
+        description: `${declinedByUsername || 'Your opponent'} declined the challenge.`,
+        variant: 'destructive',
+      });
+    });
+
     return () => socket.disconnect();
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, qc, navigate]);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'hsl(var(--background))', color: 'hsl(var(--foreground))' }}>
@@ -168,6 +229,28 @@ const socket = io(SOCKET_URL, { path: '/ws/socket.io', auth: { token } });
       <main className={cn('cf-main flex-1 w-full px-0', location === '/' && 'pt-0')}>
         {children}
       </main>
+
+      {!hideNavbar && isAuthenticated && incomingChallenges.length > 0 && (
+        <div style={{ position: 'fixed', left: 16, right: 16, bottom: 76, zIndex: 60, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+          {incomingChallenges.map((entry) => (
+            <div key={entry.gameId} style={{ pointerEvents: 'auto', margin: '0 auto', width: 'min(560px, 100%)', background: 'rgba(12,16,24,0.96)', border: '1px solid rgba(245,197,24,0.35)', borderRadius: 14, padding: '12px 14px', boxShadow: '0 16px 40px rgba(0,0,0,0.28)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Avatar src={entry.user.avatar} username={entry.user.username} size="sm" />
+                  <div>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 700 }}>{entry.user.username} challenged you</div>
+                    <div style={{ fontSize: '0.72rem', color: 'hsl(var(--muted-foreground))' }}>Time control: {entry.timeControl}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button size="sm" onClick={() => acceptChallenge.mutate(entry.gameId)} disabled={acceptChallenge.isPending}>Accept</Button>
+                  <Button size="sm" variant="outline" onClick={() => declineChallenge.mutate(entry.gameId)} disabled={declineChallenge.isPending}>Decline</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Desktop footer ── */}
       {!hideNavbar && (

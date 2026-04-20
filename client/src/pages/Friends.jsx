@@ -51,6 +51,14 @@ export default function Friends() {
   const [searchQ, setSearchQ] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [challengeTarget, setChallengeTarget] = useState(null);
+
+  const TIME_OPTIONS = [
+    { value: 'bullet', label: '1 Min' },
+    { value: 'blitz', label: '5 Min' },
+    { value: 'rapid', label: '10 Min' },
+    { value: 'classical', label: '30 Min' },
+  ];
 
   const { data, isLoading, refetch } = useQuery({ queryKey: ['friends'], queryFn: getMyFriends, refetchInterval: 5000 });
 
@@ -70,11 +78,12 @@ export default function Friends() {
     onError: (err) => toast({ title: err.message, variant: 'destructive' }),
   });
   const sendChallenge = useMutation({
-    mutationFn: (friendId) => sendChallengeRequest(friendId, { timeControl: 'blitz' }),
-    onSuccess: (_, friendId) => {
+    mutationFn: ({ friendId, timeControl }) => sendChallengeRequest(friendId, { timeControl }),
+    onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['friends'] });
-      const friend = friends.find((f) => f._id === friendId);
+      const friend = friends.find((f) => f._id === variables.friendId);
       toast({ title: 'Challenge sent!', description: friend ? `Challenge sent to ${friend.username}.` : 'Challenge sent to your friend.' });
+      setChallengeTarget(null);
     },
     onError: (err) => toast({ title: err.message, variant: 'destructive' }),
   });
@@ -115,6 +124,30 @@ export default function Friends() {
 
   return (
     <div style={{ minHeight: '100vh', padding: '0' }}>
+      {challengeTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 80, padding: 16 }}>
+          <div style={{ width: 'min(420px, 100%)', background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 14, padding: 18 }}>
+            <p style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 6 }}>Challenge {challengeTarget.username}</p>
+            <p style={{ fontSize: '0.78rem', color: 'hsl(var(--muted-foreground))', marginBottom: 14 }}>Choose the time control for this match.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 14 }}>
+              {TIME_OPTIONS.map((option) => (
+                <Button
+                  key={option.value}
+                  variant="outline"
+                  onClick={() => sendChallenge.mutate({ friendId: challengeTarget._id, timeControl: option.value })}
+                  disabled={sendChallenge.isPending}
+                  style={{ width: '100%' }}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+            <Button variant="ghost" onClick={() => setChallengeTarget(null)} disabled={sendChallenge.isPending} style={{ width: '100%' }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── MOBILE layout: single column with all sections ── */}
       <div className="cf-friends-mobile">
@@ -138,7 +171,7 @@ export default function Friends() {
                       <div style={{ fontSize: '0.66rem', color: 'hsl(var(--primary))' }}>Online</div>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); sendChallenge.mutate(f._id); }} disabled={sendChallenge.isPending}>
+                  <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); setChallengeTarget(f); }} disabled={sendChallenge.isPending}>
                     Challenge
                   </Button>
                 </div>
@@ -306,7 +339,7 @@ export default function Friends() {
                     <div style={{ fontSize: '0.66rem', color: 'hsl(var(--primary))' }}>Online</div>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); sendChallenge.mutate(f._id); }} disabled={sendChallenge.isPending}>
+                <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); setChallengeTarget(f); }} disabled={sendChallenge.isPending}>
                   Challenge
                 </Button>
               </div>

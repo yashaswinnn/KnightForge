@@ -2,7 +2,7 @@ const express = require('express');
 const User = require('../models/User');
 const Game = require('../models/Game');
 const { authMiddleware } = require('../middlewares/auth');
-const { isUserOnline } = require('../sockets/gameSocket');
+const { emitToUser, isUserOnline } = require('../sockets/gameSocket');
 
 const router = express.Router();
 const TIME_MAP = { bullet: 60, blitz: 300, rapid: 600, classical: 1800 };
@@ -255,6 +255,13 @@ router.post('/:id/challenge', authMiddleware, async (req, res) => {
       User.findByIdAndUpdate(challengerId, { $push: { challengeRequestsSent: outgoingEntry } }),
     ]);
 
+    emitToUser(opponentId, 'challenge_received', {
+      gameId: game._id.toString(),
+      challengerId,
+      challengerUsername: challenger.username,
+      timeControl,
+    });
+
     res.json({ message: 'Challenge sent', gameId: game._id.toString(), timeControl });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -301,6 +308,12 @@ router.post('/challenges/:gameId/accept', authMiddleware, async (req, res) => {
       User.findByIdAndUpdate(challengerId, { $pull: { challengeRequestsSent: { game: gameId } } }),
     ]);
 
+    emitToUser(challengerId, 'challenge_accepted', {
+      gameId: game._id.toString(),
+      acceptedById: meId,
+      acceptedByUsername: me.username,
+    });
+
     res.json({ message: 'Challenge accepted', gameId: game._id.toString() });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -325,6 +338,12 @@ router.post('/challenges/:gameId/decline', authMiddleware, async (req, res) => {
       User.findByIdAndUpdate(challengerId, { $pull: { challengeRequestsSent: { game: gameId } } }),
       Game.findByIdAndDelete(gameId),
     ]);
+
+    emitToUser(challengerId, 'challenge_declined', {
+      gameId,
+      declinedById: meId,
+      declinedByUsername: me.username,
+    });
 
     res.json({ message: 'Challenge declined' });
   } catch (err) {

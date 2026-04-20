@@ -61,6 +61,7 @@ export default function PlayGame() {
   const chatEndRef = useRef(null);
   const abandonSentRef = useRef(false);
   const flagSentRef = useRef(false);
+  const graceDeadlineRef = useRef(null);
   const serverTimeRef = useRef(null);
   const localTimeRef = useRef(null);
   const timeWhiteRef = useRef(null);
@@ -223,6 +224,7 @@ export default function PlayGame() {
     setActionPending(null);
     abandonSentRef.current = false;
     flagSentRef.current = false;
+    graceDeadlineRef.current = null;
     syncClockAnchor(null);
     clearInterval(timerRef.current);
     clearInterval(graceRef.current);
@@ -261,6 +263,7 @@ export default function PlayGame() {
     updateLegal();
 
     if (gameData.status === 'completed') {
+      graceDeadlineRef.current = null;
       setReplayMode(true);
       buildReplayState(gameData.pgn || '');
       setGameOver({ result: gameData.result, reason: gameData.termination });
@@ -282,6 +285,7 @@ export default function PlayGame() {
     setRatingChange(null);
 
     if (hasHistory) {
+      graceDeadlineRef.current = null;
       setPhaseSync('playing');
       clearInterval(waitingRef.current);
     } else if (bothJoined) {
@@ -308,22 +312,23 @@ export default function PlayGame() {
     if (phaseRef.current === 'grace' || phaseRef.current === 'playing') return;
     abandonSentRef.current = false;
     setPhaseSync('grace');
+    graceDeadlineRef.current = Date.now() + (GRACE_SECONDS * 1000);
     setGraceLeft(GRACE_SECONDS);
     clearInterval(graceRef.current);
     graceRef.current = setInterval(() => {
-      setGraceLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(graceRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      const remainingMs = Math.max(0, graceDeadlineRef.current - Date.now());
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
+      setGraceLeft(remainingSeconds);
+      if (remainingMs <= 0) {
+        clearInterval(graceRef.current);
+      }
+    }, 250);
   }
 
   useEffect(() => {
     if (phase !== 'grace' || graceLeft > 0 || gameOver || abandonSentRef.current) return;
     abandonSentRef.current = true;
+    graceDeadlineRef.current = null;
     clearInterval(graceRef.current);
     setGameOver({ result: 'black', reason: 'abandoned' });
     setPhaseSync('over');
@@ -388,6 +393,7 @@ export default function PlayGame() {
       flagSentRef.current = false;
 
       if (phaseRef.current !== 'playing') {
+        graceDeadlineRef.current = null;
         clearInterval(graceRef.current);
         setPhaseSync('playing');
       }
@@ -409,6 +415,7 @@ export default function PlayGame() {
       queryClient.invalidateQueries({ queryKey: ['lb-stats'] });
 
       flagSentRef.current = false;
+      graceDeadlineRef.current = null;
       setGameOver({ result, reason });
       setPhaseSync('over');
       clearInterval(timerRef.current);
@@ -504,6 +511,7 @@ export default function PlayGame() {
     flagSentRef.current = false;
 
     if (phaseRef.current !== 'playing') {
+      graceDeadlineRef.current = null;
       clearInterval(graceRef.current);
       setPhaseSync('playing');
     }
@@ -527,6 +535,7 @@ export default function PlayGame() {
 
       socketRef.current?.emit('game_over', { gameId, result, reason, fen: nextFen, pgn: chess.pgn() });
       setGameOver({ result, reason });
+      graceDeadlineRef.current = null;
       setPhaseSync('over');
       clearInterval(timerRef.current);
       clearInterval(graceRef.current);
