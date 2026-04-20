@@ -5,6 +5,7 @@ const { authMiddleware } = require('../middlewares/auth');
 const { isUserOnline } = require('../sockets/gameSocket');
 
 const router = express.Router();
+const TIME_MAP = { bullet: 60, blitz: 300, rapid: 600, classical: 1800 };
 
 router.get('/me/stats', authMiddleware, async (req, res) => {
   try {
@@ -89,7 +90,9 @@ router.get('/me/friends', authMiddleware, async (req, res) => {
     const user = await User.findById(req.user._id)
       .populate('friends', 'username rating avatar')
       .populate('friendRequestsReceived', 'username rating avatar')
-      .populate('friendRequestsSent', 'username rating avatar');
+      .populate('friendRequestsSent', 'username rating avatar')
+      .populate('challengeRequestsReceived.user', 'username rating avatar')
+      .populate('challengeRequestsSent.user', 'username rating avatar');
 
     const addPresence = (people = []) =>
       people.map((person) => ({
@@ -97,10 +100,25 @@ router.get('/me/friends', authMiddleware, async (req, res) => {
         online: isUserOnline(person._id),
       }));
 
+    const addChallengePresence = (requests = []) =>
+      requests
+        .filter((entry) => entry?.user && entry?.game)
+        .map((entry) => ({
+          gameId: entry.game.toString(),
+          timeControl: entry.timeControl || 'blitz',
+          createdAt: entry.createdAt,
+          user: {
+            ...entry.user.toObject(),
+            online: isUserOnline(entry.user._id),
+          },
+        }));
+
     res.json({
       friends: addPresence(user.friends || []),
       received: addPresence(user.friendRequestsReceived || []),
       sent: addPresence(user.friendRequestsSent || []),
+      incomingChallenges: addChallengePresence(user.challengeRequestsReceived || []),
+      outgoingChallenges: addChallengePresence(user.challengeRequestsSent || []),
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -183,6 +201,132 @@ router.post('/:id/friend-request', authMiddleware, async (req, res) => {
     await User.findByIdAndUpdate(toId, { $addToSet: { friendRequestsReceived: fromId } });
     await User.findByIdAndUpdate(fromId, { $addToSet: { friendRequestsSent: toId } });
     res.json({ message: 'Friend request sent' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/:id/challenge', authMiddleware, async (req, res) => {
+  try {
+    const opponentId = req.params.id;
+    const challengerId = req.user._id.toString();
+    const timeControl = TIME_MAP[req.body?.timeControl] ? req.body.timeControl : 'blitz';
+
+    if (opponentId === challengerId) {
+      return res.status(400).json({ message: "You can't challenge yourself" });
+    }
+
+    const [challenger, opponent] = await Promise.all([
+      User.findById(challengerId),
+      User.findById(opponentId),
+    ]);
+
+    if (!challenger || !opponent) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const areFriends = challenger.friends?.some((id) => id.toString() === opponentId);
+    if (!areFriends) {
+      return res.status(400).json({ message: 'You can only challenge your friends' });
+    }
+
+    const existingIncoming = opponent.challengeRequestsReceived?.find((entry) => entry.user?.toString() === challengerId);
+    if (existingIncoming) {
+      return res.status(400).json({ message: 'Challenge already sent' });
+    }
+
+    const baseTime = TIME_MAP[timeControl] || 300;
+    const challengerIsWhite = Math.random() < 0.5;
+
+    const game = await Game.create({
+      timeControl,
+      status: 'waiting',
+      timeWhite: baseTime,
+      timeBlack: baseTime,
+      whitePlayerId: challengerIsWhite ? challengerId : null,
+      blackPlayerId: challengerIsWhite ? null : challengerId,
+    });
+
+    const challengeEntry = { user: challengerId, game: game._id, timeControl, createdAt: new Date() };
+    const outgoingEntry = { user: opponentId, game: game._id, timeControl, createdAt: challengeEntry.createdAt };
+
+    await Promise.all([
+      User.findByIdAndUpdate(opponentId, { $push: { challengeRequestsReceived: challengeEntry } }),
+      User.findByIdAndUpdate(challengerId, { $push: { challengeRequestsSent: outgoingEntry } }),
+    ]);
+
+    res.json({ message: 'Challenge sent', gameId: game._id.toString(), timeControl });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/challenges/:gameId/accept', authMiddleware, async (req, res) => {
+  try {
+    const meId = req.user._id.toString();
+    const { gameId } = req.params;
+
+    const me = await User.findById(meId);
+    const incoming = me?.challengeRequestsReceived?.find((entry) => entry.game?.toString() === gameId);
+    if (!incoming) {
+      return res.status(404).json({ message: 'Challenge not found' });
+    }
+
+    const challengerId = incoming.user.toString();
+    const game = await Game.findById(gameId);
+    if (!game || game.status !== 'waiting') {
+      await Promise.all([
+        User.findByIdAndUpdate(meId, { $pull: { challengeRequestsReceived: { game: gameId } } }),
+        User.findByIdAndUpdate(challengerId, { $pull: { challengeRequestsSent: { game: gameId } } }),
+      ]);
+      return res.status(400).json({ message: 'Challenge is no longer available' });
+    }
+
+    if (game.whitePlayerId && game.blackPlayerId) {
+      game.status = 'active';
+    } else if (!game.whitePlayerId) {
+      game.whitePlayerId = meId;
+      game.status = 'active';
+    } else if (!game.blackPlayerId) {
+      game.blackPlayerId = meId;
+      game.status = 'active';
+    } else {
+      return res.status(400).json({ message: 'Could not join challenge' });
+    }
+
+    await game.save();
+
+    await Promise.all([
+      User.findByIdAndUpdate(meId, { $pull: { challengeRequestsReceived: { game: gameId } } }),
+      User.findByIdAndUpdate(challengerId, { $pull: { challengeRequestsSent: { game: gameId } } }),
+    ]);
+
+    res.json({ message: 'Challenge accepted', gameId: game._id.toString() });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/challenges/:gameId/decline', authMiddleware, async (req, res) => {
+  try {
+    const meId = req.user._id.toString();
+    const { gameId } = req.params;
+
+    const me = await User.findById(meId);
+    const incoming = me?.challengeRequestsReceived?.find((entry) => entry.game?.toString() === gameId);
+    if (!incoming) {
+      return res.status(404).json({ message: 'Challenge not found' });
+    }
+
+    const challengerId = incoming.user.toString();
+
+    await Promise.all([
+      User.findByIdAndUpdate(meId, { $pull: { challengeRequestsReceived: { game: gameId } } }),
+      User.findByIdAndUpdate(challengerId, { $pull: { challengeRequestsSent: { game: gameId } } }),
+      Game.findByIdAndDelete(gameId),
+    ]);
+
+    res.json({ message: 'Challenge declined' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

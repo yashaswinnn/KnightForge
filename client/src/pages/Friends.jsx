@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'wouter';
-import { acceptFriendRequest, declineFriendRequest, getMyFriends, searchUsers, sendFriendRequest } from '../lib/api.js';
+import {
+  acceptChallengeRequest,
+  acceptFriendRequest,
+  declineChallengeRequest,
+  declineFriendRequest,
+  getMyFriends,
+  searchUsers,
+  sendChallengeRequest,
+  sendFriendRequest,
+} from '../lib/api.js';
 import { Button } from '../components/ui/button.jsx';
 import { toast } from '../hooks/use-toast.js';
 import { Avatar } from '../components/Avatar.jsx';
@@ -60,6 +69,32 @@ export default function Friends() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['friends'] }); toast({ title: 'Friend request sent!' }); },
     onError: (err) => toast({ title: err.message, variant: 'destructive' }),
   });
+  const sendChallenge = useMutation({
+    mutationFn: (friendId) => sendChallengeRequest(friendId, { timeControl: 'blitz' }),
+    onSuccess: (_, friendId) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      const friend = friends.find((f) => f._id === friendId);
+      toast({ title: 'Challenge sent!', description: friend ? `Challenge sent to ${friend.username}.` : 'Challenge sent to your friend.' });
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
+  const acceptChallenge = useMutation({
+    mutationFn: acceptChallengeRequest,
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({ title: 'Challenge accepted!', description: 'Opening your match now.' });
+      navigate(`/play/${res.gameId}`);
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
+  const declineChallenge = useMutation({
+    mutationFn: declineChallengeRequest,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      toast({ title: 'Challenge declined' });
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
 
   async function handleSearch() {
     if (searchQ.length < 2) return;
@@ -74,6 +109,8 @@ export default function Friends() {
   const friends = data?.friends || [];
   const received = data?.received || [];
   const sent = data?.sent || [];
+  const incomingChallenges = data?.incomingChallenges || [];
+  const outgoingChallenges = data?.outgoingChallenges || [];
   const onlineFriends = friends.filter(f => f.online);
 
   return (
@@ -101,7 +138,31 @@ export default function Friends() {
                       <div style={{ fontSize: '0.66rem', color: 'hsl(var(--primary))' }}>Online</div>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); toast({ title: `Challenge sent to ${f.username}!` }); }}>Challenge</Button>
+                  <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); sendChallenge.mutate(f._id); }} disabled={sendChallenge.isPending}>
+                    Challenge
+                  </Button>
+                </div>
+              ))}
+              <div style={{ height: 1, background: 'hsl(var(--border))', margin: '16px 0' }} />
+            </div>
+          )}
+
+          {incomingChallenges.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <SectionLabel>Challenges ({incomingChallenges.length})</SectionLabel>
+              {incomingChallenges.map((entry, i) => (
+                <div key={entry.gameId} className="cf-friend-item" style={{ animationDelay: `${i * 0.07}s` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }} onClick={() => navigate(`/profile/${entry.user._id}`)}>
+                    <div style={{ position: 'relative' }}><Avatar src={entry.user.avatar} username={entry.user.username} size="sm" /><PresenceDot online={entry.user.online} /></div>
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{entry.user.username}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'hsl(var(--muted-foreground))' }}>{entry.timeControl} challenge</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <Button size="sm" onClick={() => acceptChallenge.mutate(entry.gameId)} disabled={acceptChallenge.isPending}>Accept</Button>
+                    <Button size="sm" variant="outline" onClick={() => declineChallenge.mutate(entry.gameId)} disabled={declineChallenge.isPending}>Decline</Button>
+                  </div>
                 </div>
               ))}
               <div style={{ height: 1, background: 'hsl(var(--border))', margin: '16px 0' }} />
@@ -204,6 +265,21 @@ export default function Friends() {
               ))}
             </div>
           )}
+
+          {outgoingChallenges.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <SectionLabel>Challenge Sent ({outgoingChallenges.length})</SectionLabel>
+              {outgoingChallenges.map((entry) => (
+                <div key={entry.gameId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }} onClick={() => navigate(`/profile/${entry.user._id}`)}>
+                    <Avatar src={entry.user.avatar} username={entry.user.username} size="sm" />
+                    <span style={{ fontSize: '0.8rem' }}>{entry.user.username}</span>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'hsl(var(--muted-foreground))' }}>Awaiting response</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -230,10 +306,34 @@ export default function Friends() {
                     <div style={{ fontSize: '0.66rem', color: 'hsl(var(--primary))' }}>Online</div>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); toast({ title: `Challenge sent to ${f.username}!` }); }}>Challenge</Button>
+                <Button size="sm" variant="outline" onClick={e => { e.stopPropagation(); sendChallenge.mutate(f._id); }} disabled={sendChallenge.isPending}>
+                  Challenge
+                </Button>
               </div>
             ))}
           </div>
+
+          {incomingChallenges.length > 0 && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ height: 1, background: 'hsl(var(--border))', margin: '0 0 14px' }} />
+              <SectionLabel>Challenges ({incomingChallenges.length})</SectionLabel>
+              {incomingChallenges.map((entry, i) => (
+                <div key={entry.gameId} className="cf-friend-item" style={{ animationDelay: `${i * 0.07}s` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }} onClick={() => navigate(`/profile/${entry.user._id}`)}>
+                    <div style={{ position: 'relative' }}><Avatar src={entry.user.avatar} username={entry.user.username} size="sm" /><PresenceDot online={entry.user.online} /></div>
+                    <div>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{entry.user.username}</div>
+                      <div style={{ fontSize: '0.66rem', color: 'hsl(var(--primary))' }}>{entry.timeControl} challenge</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <Button size="sm" onClick={() => acceptChallenge.mutate(entry.gameId)} disabled={acceptChallenge.isPending}>Accept</Button>
+                    <Button size="sm" variant="outline" onClick={() => declineChallenge.mutate(entry.gameId)} disabled={declineChallenge.isPending}>Decline</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {received.length > 0 && (
             <div style={{ marginBottom: 18 }}>
@@ -323,6 +423,21 @@ export default function Friends() {
                     <span style={{ fontSize: '0.8rem' }}>{u.username}</span>
                   </div>
                   <span style={{ fontSize: '0.7rem', color: 'hsl(var(--muted-foreground))' }}>Awaiting</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {outgoingChallenges.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 8 }}>Challenge Sent ({outgoingChallenges.length})</div>
+              {outgoingChallenges.map((entry) => (
+                <div key={entry.gameId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer' }} onClick={() => navigate(`/profile/${entry.user._id}`)}>
+                    <Avatar src={entry.user.avatar} username={entry.user.username} size="sm" />
+                    <span style={{ fontSize: '0.8rem' }}>{entry.user.username}</span>
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: 'hsl(var(--muted-foreground))' }}>Awaiting response</span>
                 </div>
               ))}
             </div>

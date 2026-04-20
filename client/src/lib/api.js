@@ -56,6 +56,9 @@ export const getMyFriends         = ()   => api.get('/api/users/me/friends');
 export const sendFriendRequest    = (id) => api.post(`/api/users/${id}/friend-request`, {});
 export const acceptFriendRequest  = (id) => api.post(`/api/users/${id}/friend-accept`, {});
 export const declineFriendRequest = (id) => api.post(`/api/users/${id}/friend-decline`, {});
+export const sendChallengeRequest = (id, data = {}) => api.post(`/api/users/${id}/challenge`, data);
+export const acceptChallengeRequest = (gameId) => api.post(`/api/users/challenges/${gameId}/accept`, {});
+export const declineChallengeRequest = (gameId) => api.post(`/api/users/challenges/${gameId}/decline`, {});
 
 // ── Leaderboard ─────────────────────────────────────────────
 export const getLeaderboard      = (p = {}) => {

@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getMyFriends, acceptFriendRequest, declineFriendRequest, getRecentGames } from '../lib/api.js';
+import {
+  acceptChallengeRequest,
+  acceptFriendRequest,
+  declineChallengeRequest,
+  declineFriendRequest,
+  getMyFriends,
+  getRecentGames,
+} from '../lib/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { Avatar } from './Avatar.jsx';
 import { toast } from '../hooks/use-toast.js';
@@ -63,6 +70,28 @@ export function NotificationBell() {
     onError: (err) => toast({ title: err.message, variant: 'destructive' }),
   });
 
+  const acceptChallenge = useMutation({
+    mutationFn: acceptChallengeRequest,
+    onSuccess: (res, gameId) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      markSeen('challenge_' + gameId);
+      setOpen(false);
+      toast({ title: 'Challenge accepted!', description: 'Opening your match now.' });
+      navigate(`/play/${res.gameId}`);
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
+
+  const declineChallenge = useMutation({
+    mutationFn: declineChallengeRequest,
+    onSuccess: (_, gameId) => {
+      qc.invalidateQueries({ queryKey: ['friends'] });
+      markSeen('challenge_' + gameId);
+      toast({ title: 'Challenge declined' });
+    },
+    onError: (err) => toast({ title: err.message, variant: 'destructive' }),
+  });
+
   // Close on outside click
   useEffect(() => {
     if (!open) return;
@@ -105,6 +134,19 @@ export function NotificationBell() {
       message: `${u.username} sent you a friend request`,
       time: null,
       userId: u._id,
+    });
+  });
+
+  const incomingChallenges = friendData?.incomingChallenges || [];
+  incomingChallenges.forEach((entry) => {
+    notifications.push({
+      id: 'challenge_' + entry.gameId,
+      type: 'challenge_request',
+      user: entry.user,
+      message: `${entry.user.username} challenged you`,
+      time: entry.createdAt,
+      gameId: entry.gameId,
+      timeControl: entry.timeControl,
     });
   });
 
@@ -209,6 +251,10 @@ export function NotificationBell() {
                         navigate('/friends');
                         setOpen(false);
                       }
+                      if (n.type === 'challenge_request') {
+                        navigate('/friends');
+                        setOpen(false);
+                      }
                     }}
                     onMouseEnter={e => { if (n.type !== 'default') e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = unread ? 'rgba(245,197,24,0.04)' : 'transparent'; }}
@@ -234,6 +280,34 @@ export function NotificationBell() {
                           <button
                             onClick={e => { e.stopPropagation(); decline.mutate(n.userId); }}
                             disabled={decline.isPending}
+                            style={{ flex: 1, padding: '5px 0', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      </div>
+                    ) : n.type === 'challenge_request' ? (
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+                          {unread && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'hsl(var(--primary))', flexShrink: 0 }} />}
+                          <Avatar src={n.user.avatar} username={n.user.username} size="sm" style={{ flexShrink: 0 }} />
+                          <div>
+                            <div style={{ fontSize: '0.76rem', fontWeight: 600 }}>{n.user.username}</div>
+                            <div style={{ fontSize: '0.68rem', color: 'hsl(var(--muted-foreground))' }}>{n.timeControl} challenge</div>
+                            {n.time && <div style={{ fontSize: '0.64rem', color: 'hsl(var(--muted-foreground))', marginTop: 1 }}>{timeAgo(n.time)}</div>}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginLeft: 15 }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); acceptChallenge.mutate(n.gameId); }}
+                            disabled={acceptChallenge.isPending}
+                            style={{ flex: 1, padding: '5px 0', borderRadius: 7, border: 'none', background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); declineChallenge.mutate(n.gameId); }}
+                            disabled={declineChallenge.isPending}
                             style={{ flex: 1, padding: '5px 0', borderRadius: 7, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: 'hsl(var(--muted-foreground))', fontSize: '0.72rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
                           >
                             Decline

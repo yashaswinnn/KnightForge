@@ -65,6 +65,7 @@ export default function PlayGame() {
   const localTimeRef = useRef(null);
   const timeWhiteRef = useRef(null);
   const timeBlackRef = useRef(null);
+  const gameOverRef = useRef(null);
 
   const setPhaseSync = (nextPhase) => {
     phaseRef.current = nextPhase;
@@ -73,6 +74,7 @@ export default function PlayGame() {
 
   useEffect(() => { timeWhiteRef.current = timeWhite; }, [timeWhite]);
   useEffect(() => { timeBlackRef.current = timeBlack; }, [timeBlack]);
+  useEffect(() => { gameOverRef.current = gameOver; }, [gameOver]);
 
   const { data: gameData, refetch } = useQuery({
     queryKey: ['game', gameId],
@@ -232,6 +234,10 @@ export default function PlayGame() {
   useEffect(() => {
     if (!gameData || !user) return;
 
+    if (gameOverRef.current && gameData.status !== 'completed') {
+      return;
+    }
+
     const uid = user._id || user.id;
     if (gameData.whitePlayerId === uid) setMyColor('white');
     else if (gameData.blackPlayerId === uid) setMyColor('black');
@@ -366,6 +372,10 @@ export default function PlayGame() {
     });
 
     socket.on('game_update', ({ fen: nextFen, move, pgn, timeWhite: tw, timeBlack: tb, serverTime }) => {
+      if (gameOverRef.current || phaseRef.current === 'over') {
+        return;
+      }
+
       chess.load(nextFen);
       setFen(nextFen);
       setLastMove(move);
